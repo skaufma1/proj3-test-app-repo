@@ -1,0 +1,389 @@
+pipeline {
+    agent {
+        label 'slave1'
+    }
+
+    environment {
+        MYSQL_CREDENTIALS = credentials('mysql-credentials')
+        MYSQL_USERNAME = null
+        MYSQL_PASSWORD = null
+    }
+
+    stages {
+
+	    // Checkout from GitHub. This triggers via webhook, using the Jenkisfile
+	    // *********************************************************************
+	    stage('Checkout SCM') {
+	        steps {
+		    checkout([
+			    $class: 'GitSCM',
+			     branches: [[name: 'main']],
+			     userRemoteConfigs: [[
+				    url: 'https://github.com/skaufma1/proj3-test-app-repo.git',
+				    credentialsId: ''
+				    ]]
+			      ])
+	        }
+        }
+
+        // Taking measures to avoid Performance Issues while Testing the web-Application
+	    // *****************************************************************************
+        stage('Restart ChromeDriver - Perf. Issues Avoidance while Tests') {
+            steps {
+                script {
+                    // Check if ChromeDriver is already running
+                    def chromedriverRunning = sh(script: 'pgrep -f "chromedriver"', returnStatus: true)
+
+                    if (chromedriverRunning != 0) {
+                        // ChromeDriver is not running, start it
+                        sh 'chromedriver --no-sandbox &'
+
+                        // Wait for ChromeDriver to start
+                        sleep 5
+                    }
+                }
+
+                sh '''
+
+                    // google-chrome-stable --headless --no-sandbox --disable-gpu &
+
+                    # Identify the running ChromeDriver process
+                    CHROMEDRIVER_PID=$(pidof chromedriver)
+
+                    # Terminate the ChromeDriver process
+                    kill $CHROMEDRIVER_PID
+
+                    # Verify that the ChromeDriver process has been terminated
+                    pgrep chromedriver || true
+
+                    # Restart ChromeDriver
+                    chromedriver --no-sandbox &
+
+                    # Wait for ChromeDriver to start
+                    sleep 5
+                '''
+            }
+        }
+
+        // Deploying the docker image onto the Slave server
+	    // Flask web-service is auto-launched for Tests (port 5000)
+	    // ********************************************************
+	    stage('Tests Preps: Deploying Flask web-Application to Slave Machine') {
+            steps {
+                script {
+		        sh 'sudo docker build -t proj3_flask_image .'
+		        sh "sudo docker run --restart always -d -p 5000:5000 --name Proj3_Flask_for_Evaluation proj3_flask_image"
+                }
+            }
+        }
+
+        // Pytest (Selenium) auto-Tests of the web-Application
+	    // ***************************************************
+        stage('Run Tests: web-Application on Slave Machine (port 5000)') {
+            steps {
+                script {
+
+                    // Compiling the CSV file name & text
+		            // **********************************
+		            def buildTimestamp = currentBuild.getTimeInMillis()
+		            def formattedTimestamp = new Date(buildTimestamp).format('dd_MM_yyyy_HHmmss')
+		            echo "Build timestamp: ${formattedTimestamp}"
+                    def fileName = "${formattedTimestamp}_Proj3_FlaskDeployment_test_result.html"
+                    echo "HTML report file name: ${fileName}"
+                    env.FILE_NAME = fileName
+
+                    sh 'pip install selenium'
+                    sh 'pip install webdriver_manager'
+                    sh 'pip install pytest'
+                    sh 'pip install mysql-connector-python'
+
+                    sh "/home/ubuntu/.local/bin/pytest --html='${fileName}'"
+
+                    // Tests Initiating User: Information Collection
+		            // *********************************************
+		            def buildUserFullName = ""
+		            wrap([$class: 'BuildUser']) {
+                        buildUserFullName = env.BUILD_USER
+		            }
+
+		            env.BUILD_USER_NAME = buildUserFullName
+		            env.BUILD_USER_NAME_no_spaces = env.BUILD_USER_NAME.replaceAll(' ', '_')
+
+		            print("BUILD_USER_NAME = '${env.BUILD_USER_NAME_no_spaces}'")
+
+                    // Updating Tests Initiator Information
+                    // ************************************
+                    def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                    def mysqlPort = '3306'
+                    def mysqlDatabase = 'PROJ2'
+
+                    // Extract username and password from the credentials
+                    withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                        MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                        MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+                    }
+
+                    // Execute the SQL query using shell commands with the extracted credentials
+                    def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"UPDATE proj3_tests_results SET test_by = '${env.BUILD_USER_NAME_no_spaces}' WHERE test_by IS NULL;\""""
+                    def result = sh(returnStdout: true, script: query)
+
+                    // Verifying: any of the Tests FAILED ?
+                    // ************************************
+                    def sqlQuery = "SELECT COUNT(*) AS num_failures FROM proj3_tests_results WHERE dyn_db_reported IS NULL AND test_status = '*** FAILURE ***'"
+                    def mysqlCmd = "mysql -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h $mysqlHost -D $mysqlDatabase -N -B -e \"${sqlQuery}\""
+
+                    def result_failures = sh(script: mysqlCmd, returnStdout: true).trim()
+                    int numFailures = Integer.parseInt(result_failures)
+
+                    if (numFailures > 0) {
+                        echo "There are ${numFailures} rows with NULL db_updated and test_status = '*** FAILURE ***'"
+                        env.ERROR_DETECTED = 'TRUE'
+                    } else {
+                        echo "No rows found with NULL db_updated and test_status = '*** FAILURE ***'"
+                        env.ERROR_DETECTED = 'FALSE'
+                    }
+                }
+            }
+        }
+
+        // Test Results Deploying to AWS s3, DynamoDB
+	    // ******************************************
+	    stage('Deploy Tests Results to s3 (HTML Reports), DynamoDB (Info per Test)') {
+	        steps {
+
+		        // HTML Tests Reports upload to AWS S3
+		        // ***********************************
+		        withAWS(region: 'us-east-1', credentials: 'aws-credentials') {
+		            s3Upload(bucket: 'proj3-tf-bucket', path: '', file: env.FILE_NAME)
+		        }
+
+		        script {
+
+		            // Updating test initiator information
+                    // ***********************************
+                    def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                    def mysqlPort = '3306'
+                    def mysqlDatabase = 'PROJ2'
+
+                    // Extract username and password from the credentials
+                    withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                        MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                        MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+
+                        // Verifying if any Tests FAILED
+                        // ***********************************
+                        def sqlQuery = "SELECT COUNT(*) AS rows_count FROM proj3_tests_results WHERE dyn_db_reported IS NULL"
+                        def mysqlCmd = "mysql -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h $mysqlHost -D $mysqlDatabase -N -B -e \"${sqlQuery}\""
+
+                        def result_row_count = sh(script: mysqlCmd, returnStdout: true).trim()
+                        int rows_for_DynDB = Integer.parseInt(result_row_count)
+
+                        echo "rows_for_DynDB = ${rows_for_DynDB}"
+
+                        // Handling each record to be loaded to DynamoDB
+                        // *********************************************
+                        for (int i = 0; i < rows_for_DynDB; i++) {
+                            echo "Processing item: ${i}"
+
+                            // Fetch a record of non-Reported Test from the MySQL table
+                            def sqlQuery2 = "SELECT * FROM proj3_tests_results WHERE dyn_db_reported IS NULL ORDER BY ID LIMIT 1"
+                            def mysqlCmd2 = "mysql -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h $mysqlHost -D $mysqlDatabase -N -B -e \"${sqlQuery2}\""
+
+                            def result = sh(script: mysqlCmd2, returnStdout: true).trim()
+
+                            // Split the result into individual attributes
+                            def attributes = result.split('\t')
+
+                            // Access the attributes
+                            def id =          attributes[0]
+                            def datetime =    attributes[1]
+                            def test_name =   attributes[2]
+                            def test_by =     attributes[3]
+                            def test_status = attributes[4]
+
+                            echo "id = ${id}, DateTime = ${datetime}, Test Name = ${test_name}, Tested by = ${test_by}, Test Status = ${test_status}"
+
+                            env.MYSQL_ID = id
+                            env.DATETIME = datetime
+                            env.TESTNAME = test_name
+                            env.TESTBY = test_by
+                            env.TESTSTATUS = test_status
+
+                            // Upload Information per each Test into AWS DynamoDB
+                            // **************************************************
+
+                            // Import the required Python libraries
+                            sh 'pip install --user --upgrade awscli'
+                            sh 'pip install --user --upgrade boto3'
+
+
+                            // Set up AWS credentials
+                            // Retrieve the AWS access key ID and secret access key from Jenkins credentials
+                            withCredentials([usernamePassword(credentialsId: 'aws-UP-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+
+                                // Set up the environment variables
+                                env.AWS_ACCESS_KEY_ID = AWS_ACCESS_KEY_ID
+                                env.AWS_SECRET_ACCESS_KEY = AWS_SECRET_ACCESS_KEY
+
+                                // Run the Python script to load data into DynamoDB using boto3
+sh '''
+python3 - <<EOF
+import os
+import boto3
+
+# Set up the DynamoDB client
+session = boto3.Session(
+aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+region_name='us-east-1'
+)
+dynamodb = session.client('dynamodb')
+
+# Your code to load data into DynamoDB here
+# Example: Inserting a record into DynamoDB
+table_name = 'proj3-tf-dyndb'
+item_data = {
+    'DateTime': {'S': '$DATETIME'},
+    'TestName': {'S': '$TESTNAME'},
+    'TestRunBy': {'S': '$TESTBY'},
+    'TestStatus': {'S': '$TESTSTATUS'}
+}
+response = dynamodb.put_item(TableName=table_name, Item=item_data)
+print(response)
+EOF
+'''
+                            }
+
+                        // Set MySQ record with 'Update to DB' Flag to TRUE
+                        def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"UPDATE proj3_tests_results SET dyn_db_reported = 'Y' WHERE id = '${env.MYSQL_ID}';\""""
+                        def result3 = sh(returnStdout: true, script: query)
+                        }
+                    }
+                }
+	        }
+	    }
+
+        // New Image loaded to Docker Hub (only if all Tests are Successful)
+	    // Auto-Versioning mechanism applied (latest Tag/Ver + 1)
+	    // *****************************************************************
+	    stage('Loading new Image to Docker Hub (auto-Versioning)') {
+
+            when {
+                expression { env.ERROR_DETECTED != 'TRUE' }
+            }
+
+            steps {
+                withCredentials([usernameColonPassword(variable: 'MYSQL_CREDENTIALS', credentialsId: 'mysql-credentials')]) {
+                    script {
+                        // Set up MySQL connection details
+                        def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                        def mysqlPort = '3306'
+                        def mysqlDatabase = 'PROJ2'
+
+                        // Extract username and password from the credentials
+                        withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                            MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                            MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+                        }
+
+                        // Execute the SQL query using shell commands with the extracted credentials
+                        def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"SELECT * FROM proj3_dokerhub_image_tags WHERE image_name LIKE 'proj3-test-flask-app%';\""""
+                        def result = sh(returnStdout: true, script: query)
+
+                        // Process the output
+                        echo "Query result:"
+                        echo result.trim()
+
+                        // Extract the column values from the query result
+                        def lines = result.tokenize('\n').collect { it.trim() }
+                        if (lines.size() < 2) {
+                            error("No matching row found in the query result.")
+                        }
+                        def columns = lines[1].tokenize('\t')
+                        def dockerUser = columns[1]
+                        def imageName = columns[2]
+                        def imageTag = columns[3]
+                        def tagIndex = columns[4]
+
+                        // Assining a new maximal tab value for the new image, before loading to Docker Hub
+                        def tagIndexInt = tagIndex.toInteger()
+                        def tagIndexIntIncremented = tagIndexInt + 1
+
+                        def imageToLoad = "${dockerUser}/${imageName}${imageTag}${tagIndexIntIncremented}"
+
+                        // Print the image name to create
+                        echo "Image name to load to DockerHub:"
+                        echo imageToLoad
+
+                        env.IMAGE2DOCKER = imageToLoad
+
+                        sh "docker tag proj3_flask_image '$imageToLoad'"
+
+                        // Push the Docker image to Docker Hub
+                        withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')]) {
+                            sh 'docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_PASSWORD'
+                            sh "docker push '$imageToLoad'"
+                        }
+                    }
+                }
+            }
+	    }
+
+	    // After loading the new image to Docker Hub: preps towards next image to load
+	    // Referenec Table supporting auto-Versioning is prepared for the next image to load
+	    // *********************************************************************************
+	    stage('Update MySQL Table (reference data supporting auto-Versioning)') {
+
+	        when {
+                expression { env.ERROR_DETECTED != 'TRUE' }
+            }
+
+            steps {
+
+                withCredentials([usernameColonPassword(variable: 'MYSQL_CREDENTIALS', credentialsId: 'mysql-credentials')]) {
+                    script {
+                        // Set up MySQL connection details
+                        def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                        def mysqlPort = '3306'
+                        def mysqlDatabase = 'PROJ2'
+
+                        // Extract username and password from the credentials
+                        withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                            MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                            MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+                        }
+
+                        def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"UPDATE proj3_dokerhub_image_tags SET tag_index = tag_index + 1 WHERE image_name LIKE 'proj3-test-flask-app%';\""""
+                        def result = sh(returnStdout: true, script: query)
+                    }
+                }
+            }
+        }
+
+        // Cleanup Temp Files at Job Ending
+	    // ********************************
+	    stage('Cleanup: Removing Temp Files at Job Ending') {
+	        steps {
+		        script {
+
+	                // Auto removal of deployed container, supporting the next run
+                    // ***********************************************************
+	                sh 'sudo docker stop Proj3_Flask_for_Evaluation'
+	                sh 'sudo docker rm Proj3_Flask_for_Evaluation'
+	                sh 'sudo docker rmi proj3_flask_image'
+	                sh "sudo docker rmi '${env.IMAGE2DOCKER}'"
+
+	    	        echo 'Container removed - READY for next run !!!'
+
+		            // Removing the temporary file (loaded already to S3)
+		            // **************************************************
+	    	        sh "rm '${env.FILE_NAME}'"
+
+		            if (env.ERROR_DETECTED == 'TRUE') {
+		                error 'Job ends with FAILURE !!! - as Tests have FAILED'
+		            }
+		        }
+	        }
+	    }
+    }
+}

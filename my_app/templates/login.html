@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <title>Sign-In Form</title>
+    <div class="gif-container">
+    <div class="gif-image"></div>
+</div>
+</head>
+<body>
+  <!-- <form action="http://52.3.250.148:5000/login" method="POST"> -->
+  <form id="login-form" method="POST" action="{{ url_for('login') }}">
+  <input type="hidden" id="base-url" value="{{ request.host_url }}">
+    <br>
+    <h1>Sign-In Form</h1>
+    <div class="field">
+      <label for="name">Enter name:</label>
+      <input type="text" id="name" name="name" required>
+    </div>
+    <p><input type="submit" value="Submit"></p>
+  </form>
+</body>
+    <button onclick="window.location.href='/'">Home</button>
+    <br>
+    <br>
+    <br>
+    <div class="bottom-sentence">Powered by Shmuel Kaufmann, SQLabs DevOps course, May 2023</div>
+<script>
+  function updateFormAction() {
+    var form = document.getElementById('login-form');
+    var baseUrl = document.getElementById('base-url').value;
+    form.action = baseUrl + 'login';
+  }
+
+  updateFormAction();
+</script>
+</html>

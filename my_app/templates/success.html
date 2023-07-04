@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <title>Sign-In Success</title>
+    <div class="gif-container">
+    <div class="gif-image"></div>
+</div>
+<style>
+		popup {
+    		position: fixed;
+    		top: 50%;
+    		left: 50%;
+    		transform: translate(-50%, -50%);
+    		width: 80%;
+    		max-height: 80%;
+    		overflow: auto;
+    		padding: 20px;
+    		background-color: white;
+    		border: 1px solid #ccc;
+    		border-radius: 10px;
+    		box-shadow: 0 0 10px #ccc;
+		}
+	</style>
+</head>
+<body>
+<div class="container">
+    <h1>Welcome {{name}}</h1>
+</div>
+</body>
+    <button class="left-button" onclick="window.location.href='/'">Home</button>
+    <button class="right-button" onclick="window.location.href='/login'">Sign-in</button>
+    <button class="showdata-button" onclick="window.open('/results_popup', 'popup', 'width=600,height=450')">Show Testers Use Log</button>
+
+    <br>
+    <br>
+    <br>
+    <div class="bottom-sentence">Powered by Shmuel Kaufmann, SQLabs DevOps course, May 2023</div>
+</html>
