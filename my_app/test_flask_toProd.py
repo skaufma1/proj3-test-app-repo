@@ -24,7 +24,7 @@ def setup():
 # ======  Test 1  ======
 def test_signup_1(setup):
     driver = setup
-    driver.get("http://54.84.147.134:5000/")
+    driver.get("http://54.166.195.241:5000/")
     driver.maximize_window()
     driver.find_element(By.XPATH, "(//button[normalize-space()='Sign-in'])[1]").click()
     driver.find_element(By.XPATH, "//input[@id='name']").send_keys("Bruce Springsteen")
@@ -36,7 +36,7 @@ def test_signup_1(setup):
     cursor = connection.cursor()
     # Prepare the SQL statement
     sql = """
-    INSERT INTO proj2_tests_results (id, test_name, test_status, datetime)
+    INSERT INTO proj3_tests_results (id, test_name, test_status, datetime)
     SELECT COALESCE(MAX(id), 0) + 1, %s, %s, NOW()
     FROM proj2_tests_results
     """
@@ -67,7 +67,7 @@ def test_signup_1(setup):
 # ======  Test 2  ======
 def test_signup_2(setup):
     driver = setup
-    driver.get("http://54.84.147.134:5000/")
+    driver.get("http://54.166.195.241:5000/")
     driver.maximize_window()
     driver.find_element(By.XPATH, "(//button[normalize-space()='Sign-in'])[1]").click()
     driver.find_element(By.XPATH, "//input[@id='name']").send_keys("Bruce Springsteen")
@@ -79,7 +79,7 @@ def test_signup_2(setup):
     cursor = connection.cursor()
     # Prepare the SQL statement
     sql = """
-    INSERT INTO proj2_tests_results (id, test_name, test_status, datetime)
+    INSERT INTO proj3_tests_results (id, test_name, test_status, datetime)
     SELECT COALESCE(MAX(id), 0) + 1, %s, %s, NOW()
     FROM proj2_tests_results
     """
