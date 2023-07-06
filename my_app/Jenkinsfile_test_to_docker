@@ -95,6 +95,8 @@ pipeline {
                     sh 'pip install selenium'
                     sh 'pip install webdriver_manager'
                     sh 'pip install pytest'
+                    sh 'python3 -m pip install --upgrade pip'
+                    sh 'python3 -m pip install pytest-html'
                     sh 'pip install mysql-connector-python'
 
                     sh "/home/ubuntu/.local/bin/pytest --html='${fileName}'"
