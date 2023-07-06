@@ -373,7 +373,10 @@ EOF
 	                sh 'sudo docker stop Proj3_Flask_for_Evaluation'
 	                sh 'sudo docker rm Proj3_Flask_for_Evaluation'
 	                sh 'sudo docker rmi proj3_flask_image'
-	                sh "sudo docker rmi '${env.IMAGE2DOCKER}'"
+	                
+                    if (env.ERROR_DETECTED != 'TRUE') {
+	                    sh "sudo docker rmi '${env.IMAGE2DOCKER}'"
+			        }
 
 	    	        echo 'Container removed - READY for next run !!!'
 
