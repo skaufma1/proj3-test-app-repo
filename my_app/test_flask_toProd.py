@@ -24,7 +24,7 @@ def setup():
 # ======  Test 1  ======
 def test_signup_1(setup):
     driver = setup
-    driver.get("http://34.227.179.50:5000/")
+    driver.get("http://3.211.172.203:5000/")
     driver.maximize_window()
     driver.find_element(By.XPATH, "(//button[normalize-space()='Sign-in'])[1]").click()
     driver.find_element(By.XPATH, "//input[@id='name']").send_keys("Bruce Springsteen")
@@ -67,7 +67,7 @@ def test_signup_1(setup):
 # ======  Test 2  ======
 def test_signup_2(setup):
     driver = setup
-    driver.get("http://34.227.179.50:5000/")
+    driver.get("http://3.211.172.203:5000/")
     driver.maximize_window()
     driver.find_element(By.XPATH, "(//button[normalize-space()='Sign-in'])[1]").click()
     driver.find_element(By.XPATH, "//input[@id='name']").send_keys("Bruce Springsteen")
