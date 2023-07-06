@@ -38,7 +38,7 @@ def test_signup_1(setup):
     sql = """
     INSERT INTO proj3_tests_results (id, test_name, test_status, datetime)
     SELECT COALESCE(MAX(id), 0) + 1, %s, %s, NOW()
-    FROM proj2_tests_results
+    FROM proj3_tests_results
     """
 
     try:
@@ -81,7 +81,7 @@ def test_signup_2(setup):
     sql = """
     INSERT INTO proj3_tests_results (id, test_name, test_status, datetime)
     SELECT COALESCE(MAX(id), 0) + 1, %s, %s, NOW()
-    FROM proj2_tests_results
+    FROM proj3_tests_results
     """
 
     try:
