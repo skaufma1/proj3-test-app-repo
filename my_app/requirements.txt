@@ -8,6 +8,7 @@ docker==6.0.1
 exceptiongroup==1.1.1
 Flask==2.2.3
 Flask-Migrate==4.0.4
+prometheus-flask-exporter==0.22.4
 Flask-SQLAlchemy==3.0.3
 greenlet==2.0.2
 h11==0.14.0

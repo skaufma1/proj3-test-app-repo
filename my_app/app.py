@@ -3,8 +3,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate, migrate
 from sqlalchemy import desc
 from datetime import datetime
+from prometheus_flask_exporter import PrometheusMetrics
 
 app = Flask(__name__)
+metrics = PrometheusMetrics(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test_site.db'
 
 # Creating an object of SQLAlchemy, based on the Flask object
