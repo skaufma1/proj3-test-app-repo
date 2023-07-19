@@ -2,30 +2,92 @@ pipeline {
     agent {label "master"}
     
     environment {
-        IMAGE_NAME = 'shmuelk1/proj3-test-flask-app:1.0.1'
+        MYSQL_CREDENTIALS = credentials('mysql-credentials')
+        MYSQL_USERNAME = null
+        MYSQL_PASSWORD = null
     }
 
+    // environment {
+    //     IMAGE_NAME = 'shmuelk1/proj3-test-flask-app:1.0.1'
+    // }
+
     stages {
-        
-        stage ('Check conn to EKS') {
+
+        stage('K8s Prod: Deploy Test Flask application') {
             
             steps {
-                
-                sh 'kubectl get all'
-                sh 'kubectl apply -f flask-namespace.yaml'
+                withCredentials([usernameColonPassword(variable: 'MYSQL_CREDENTIALS', credentialsId: 'mysql-credentials')]) {
+                    script {
+                        // Set up MySQL connection details
+                        def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                        def mysqlPort = '3306'
+                        def mysqlDatabase = 'PROJ2'
 
-                script {
-                    def yamlContent = readFile('flask-deployment.yaml')
-                    yamlContent = yamlContent.replaceAll('\\{\\{IMAGE_NAME\\}\\}', env.IMAGE_NAME)
-                    writeFile file: 'modified-flask-deployment.yaml', text: yamlContent
+                        // Extract username and password from the credentials
+                        withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                            MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                            MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+                        }
 
-                    sh 'kubectl apply -f modified-flask-deployment.yaml'
+                        // Execute the SQL query using shell commands with the extracted credentials
+                        def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"SELECT * FROM proj3_dokerhub_image_tags WHERE image_name LIKE 'proj3-test-flask-app%';\""""
+                        def result = sh(returnStdout: true, script: query)
+
+                        // Process the output
+                        echo "Query result:"
+                        echo result.trim()
+
+                        // Extract the column values from the query result
+                        def lines = result.tokenize('\n').collect { it.trim() }
+                        if (lines.size() < 2) {
+                            error("No matching row found in the query result.")
+                        }
+                        def columns = lines[1].tokenize('\t')
+                        def dockerUser = columns[1]
+                        def imageName = columns[2]
+                        def imageTag = columns[3]
+                        def tagIndex = columns[4]
+                        def imageToPull = "${dockerUser}/${imageName}${imageTag}${tagIndex}"
+
+                        // Print the image name to create
+                        echo "Image name to create:"
+                        echo imageToPull
+
+                        // ############  K8s implementation  ############
+                        sh 'kubectl apply -f flask-namespace.yaml'
+
+                        def yamlContent = readFile('flask-deployment.yaml')
+                        yamlContent = yamlContent.replaceAll('\\{\\{IMAGE_NAME\\}\\}', '$imageToPull')
+                        writeFile file: 'modified-flask-deployment.yaml', text: yamlContent
+
+                        sh 'kubectl apply -f modified-flask-deployment.yaml'
+
+                        sh 'kubectl apply -f flask-service.yaml'
+                        sh 'kubectl apply -f flask-elb-service.yaml'                        
+                    }
                 }
-
-                sh 'kubectl apply -f flask-service.yaml'
-                sh 'kubectl apply -f flask-elb-service.yaml'
             }
         }
+        
+        // stage ('Check conn to EKS') {
+            
+        //     steps {
+                
+        //         sh 'kubectl get all'
+        //         sh 'kubectl apply -f flask-namespace.yaml'
+
+        //         script {
+        //             def yamlContent = readFile('flask-deployment.yaml')
+        //             yamlContent = yamlContent.replaceAll('\\{\\{IMAGE_NAME\\}\\}', env.IMAGE_NAME)
+        //             writeFile file: 'modified-flask-deployment.yaml', text: yamlContent
+
+        //             sh 'kubectl apply -f modified-flask-deployment.yaml'
+        //         }
+
+        //         sh 'kubectl apply -f flask-service.yaml'
+        //         sh 'kubectl apply -f flask-elb-service.yaml'
+        //     }
+        // }
     }
 
 }
