@@ -1,0 +1,23 @@
+pipeline {
+    agent {label "master"}
+    
+    parameters {
+        string(name: 'IMAGE_NAME', defaultValue: 'shmuelk1/proj3-test-flask-app:1.0.1', description: 'Docker image name')
+    }
+
+    stages {
+        
+        stage ('Check conn to EKS') {
+            
+            steps {
+                
+                sh 'kubectl get all'
+                sh 'kubectl apply -f flask-namespace.yaml'
+                sh 'kubectl apply -f flask-deployment.yaml --set image=${params.IMAGE_NAME}'
+                sh 'kubectl apply -f flask-service.yaml'
+                sh 'kubectl apply -f flask-elb-service.yaml'
+            }
+        }
+    }
+
+}
