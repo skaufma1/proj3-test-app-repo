@@ -1,0 +1,17 @@
+pipeline {
+    agent any
+
+    stages {
+        
+        stage ('Check conn to EKS') {
+            
+            steps {
+                sh 'kubectl apply -f flask-namespace.yaml'
+                sh 'kubectl apply -f flask-deployment.yaml'
+                sh 'kubectl apply -f flask-service.yaml'
+                sh 'kubectl apply -f flask-elb-service.yaml'
+            }
+        }
+    }
+
+}

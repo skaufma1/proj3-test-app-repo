@@ -1,17 +1,130 @@
 pipeline {
-    agent any
+    agent none
+
+    environment {
+        MYSQL_CREDENTIALS = credentials('mysql-credentials')
+        MYSQL_USERNAME = null
+        MYSQL_PASSWORD = null
+    }
 
     stages {
-        
-        stage ('Check conn to EKS') {
-            
+
+        // In case this job is triggered by a parent job - deployment is defaulted to Prod1 & Prod2 altogether
+        stage('Logging the selected Production Server to Deploy Flask web-service to') {
             steps {
-                sh 'kubectl apply -f flask-namespace.yaml'
-                sh 'kubectl apply -f flask-deployment.yaml'
-                sh 'kubectl apply -f flask-service.yaml'
-                sh 'kubectl apply -f flask-elb-service.yaml'
+                println "Out of Prod1/Prod2 servers, you chose to deploy the Flask web-service to <<<$params.ServerToDeployTo>>>"
+            }
+        }
+
+
+        stage('Prod1: Deploy Test Flask Container') {
+            when {
+                anyOf {
+                    expression {params.ServerToDeployTo == 'Prod1'}
+                    expression {params.ServerToDeployTo == 'Both' }
+                }
+            }
+
+            agent {label "prod1"}
+
+            steps {
+                withCredentials([usernameColonPassword(variable: 'MYSQL_CREDENTIALS', credentialsId: 'mysql-credentials')]) {
+                    script {
+                        // Set up MySQL connection details
+                        def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                        def mysqlPort = '3306'
+                        def mysqlDatabase = 'PROJ2'
+
+                        // Extract username and password from the credentials
+                        withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                            MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                            MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+                        }
+
+                        // Execute the SQL query using shell commands with the extracted credentials
+                        def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"SELECT * FROM proj3_dokerhub_image_tags WHERE image_name LIKE 'proj3-test-flask-app%';\""""
+                        def result = sh(returnStdout: true, script: query)
+
+                        // Process the output
+                        echo "Query result:"
+                        echo result.trim()
+
+                        // Extract the column values from the query result
+                        def lines = result.tokenize('\n').collect { it.trim() }
+                        if (lines.size() < 2) {
+                            error("No matching row found in the query result.")
+                        }
+                        def columns = lines[1].tokenize('\t')
+                        def dockerUser = columns[1]
+                        def imageName = columns[2]
+                        def imageTag = columns[3]
+                        def tagIndex = columns[4]
+                        def imageToPull = "${dockerUser}/${imageName}${imageTag}${tagIndex}"
+
+                        // Print the image name to create
+                        echo "Image name to create:"
+                        echo imageToPull
+
+                        sh "sudo docker pull '$imageToPull'"
+                        sh "sudo docker run --restart always -d -p 5000:5000 --name Proj3_Test_Flask '$imageToPull'"
+                    }
+                }
+            }
+        }
+
+        stage('Prod2: Deploy Test Flask Container') {
+            when {
+                anyOf {
+                    expression {params.ServerToDeployTo == 'Prod2'}
+                    expression {params.ServerToDeployTo == 'Both' }
+                }
+            }
+
+            agent {label "prod2"}
+
+            steps {
+                withCredentials([usernameColonPassword(variable: 'MYSQL_CREDENTIALS', credentialsId: 'mysql-credentials')]) {
+                    script {
+                        // Set up MySQL connection details
+                        def mysqlHost = 'proj2-db-dockerhub-image-tags.cvojwwnpfgmu.us-east-1.rds.amazonaws.com'
+                        def mysqlPort = '3306'
+                        def mysqlDatabase = 'PROJ2'
+
+                        // Extract username and password from the credentials
+                        withCredentials([usernameColonPassword(credentialsId: 'mysql-credentials', variable: 'CREDENTIALS')]) {
+                            MYSQL_USERNAME = CREDENTIALS.split(':')[0]
+                            MYSQL_PASSWORD = CREDENTIALS.split(':')[1]
+                        }
+
+                        // Execute the SQL query using shell commands with the extracted credentials
+                        def query = """mysql -h $mysqlHost -P $mysqlPort -D $mysqlDatabase -u ${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -e \"SELECT * FROM proj3_dokerhub_image_tags WHERE image_name LIKE 'proj3-test-flask-app%';\""""
+                        def result = sh(returnStdout: true, script: query)
+
+                        // Process the output
+                        echo "Query result:"
+                        echo result.trim()
+
+                        // Extract the column values from the query result
+                        def lines = result.tokenize('\n').collect { it.trim() }
+                        if (lines.size() < 2) {
+                            error("No matching row found in the query result.")
+                        }
+                        def columns = lines[1].tokenize('\t')
+                        def dockerUser = columns[1]
+                        def imageName = columns[2]
+                        def imageTag = columns[3]
+                        def tagIndex = columns[4]
+                        def imageToPull = "${dockerUser}/${imageName}${imageTag}${tagIndex}"
+
+                        // Print the image name to create
+                        echo "Image name to create:"
+                        echo imageToPull
+
+                        sh "sudo docker pull '$imageToPull'"
+                        sh "sudo docker run --restart always -d -p 5000:5000 --name Proj3_Test_Flask '$imageToPull'"
+                    }
+                }
             }
         }
     }
-
 }
