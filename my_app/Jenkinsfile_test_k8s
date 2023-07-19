@@ -57,7 +57,7 @@ pipeline {
                         sh 'kubectl apply -f flask-namespace.yaml'
 
                         def yamlContent = readFile('flask-deployment.yaml')
-                        yamlContent = yamlContent.replaceAll('\\{\\{IMAGE_NAME\\}\\}', '$imageToPull')
+                        yamlContent = yamlContent.replaceAll('\\{\\{IMAGE_NAME\\}\\}', imageToPull)
                         writeFile file: 'modified-flask-deployment.yaml', text: yamlContent
 
                         sh 'kubectl apply -f modified-flask-deployment.yaml'
