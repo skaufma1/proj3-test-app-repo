@@ -15,6 +15,6 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ${IMAGE_NAME}
+          image: {{IMAGE_NAME}}
           ports:
             - containerPort: 5000
