@@ -54,6 +54,9 @@ pipeline {
                         echo imageToPull
 
                         // ############  K8s implementation  ############
+                        // Cleaning before new implemetation
+                        sh 'kubectl delete namespace flask-namespace'
+
                         sh 'kubectl apply -f flask-namespace.yaml'
 
                         def yamlContent = readFile('flask-deployment.yaml')
@@ -64,7 +67,7 @@ pipeline {
 
                         sh 'kubectl apply -f flask-service.yaml'
                         sh 'kubectl apply -f flask-elb-service.yaml'  
-                        
+
                         // Status check
                         sh 'kubectl get all --namespace flask-namespace'                      
                     }
