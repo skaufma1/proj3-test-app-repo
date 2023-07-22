@@ -1,5 +1,6 @@
 import pytest
 import mysql.connector
+import chromedriver_autoinstaller
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -11,12 +12,17 @@ from selenium.webdriver.common.by import By
 # =======================
 @pytest.fixture
 def setup():
-    chrome_driver_path = ChromeDriverManager().install()
+    # Install and check the correct version of ChromeDriver
+    chromedriver_autoinstaller.install()
+    # chrome_driver_path = ChromeDriverManager().install()
     chrome_options = Options()
     chrome_options.add_experimental_option("detach", True)
     chrome_options.add_argument("--headless")
-    service_obj = Service(chrome_driver_path)
-    driver = webdriver.Chrome(service=service_obj, options=chrome_options)
+    # service_obj = Service(chrome_driver_path)
+    # driver = webdriver.Chrome(service=service_obj, options=chrome_options)
+    # Create the WebDriver instance with the installed ChromeDriver
+    driver = webdriver.Chrome(options=chrome_options)
+
     yield driver
     driver.quit()
 
@@ -24,7 +30,7 @@ def setup():
 # ======  Test 1  ======
 def test_signup_1(setup):
     driver = setup
-    driver.get("http://34.234.251.56:5000/")
+    driver.get("http://44.217.178.246:5000/")
     driver.maximize_window()
     driver.find_element(By.XPATH, "(//button[normalize-space()='Sign-in'])[1]").click()
     driver.find_element(By.XPATH, "//input[@id='name']").send_keys("Bruce Springsteen")
@@ -67,7 +73,7 @@ def test_signup_1(setup):
 # ======  Test 2  ======
 def test_signup_2(setup):
     driver = setup
-    driver.get("http://34.234.251.56:5000/")
+    driver.get("http://44.217.178.246:5000/")
     driver.maximize_window()
     driver.find_element(By.XPATH, "(//button[normalize-space()='Sign-in'])[1]").click()
     driver.find_element(By.XPATH, "//input[@id='name']").send_keys("Bruce Springsteen")

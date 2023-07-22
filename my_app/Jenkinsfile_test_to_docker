@@ -98,6 +98,7 @@ pipeline {
                     sh 'python3 -m pip install --upgrade pip'
                     sh 'python3 -m pip install pytest-html'
                     sh 'pip install mysql-connector-python'
+                    sh 'pip install chromedriver-autoinstaller'
 
                     sh "/home/ubuntu/.local/bin/pytest --html='${fileName}'"
 
